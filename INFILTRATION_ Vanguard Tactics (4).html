@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>INFILTRATION: Vanguard Tactics</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--border:#30363d;--gold:#d29922;--text:#c9d1d9;color-scheme:dark;
+padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Tahoma,Verdana,sans-serif}
+body{background:var(--bg);color:var(--text);display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:16px}
+h1{color:#58a6ff;text-shadow:0 0 10px rgba(88,166,255,.3)}
+.sub{font-size:.9rem;color:#8b949e;margin-bottom:14px}
+.wrap{display:flex;flex-direction:column;align-items:center;gap:14px;max-width:420px;width:100%}
+.panel{background:var(--panel);border:1px solid var(--border);padding:12px;border-radius:8px;width:100%;text-align:center}
+.row{display:flex;justify-content:space-around;align-items:center;gap:8px;flex-wrap:wrap}
+select,button,input{background:#21262d;color:var(--text);border:1px solid var(--border);padding:8px 14px;border-radius:6px;font-weight:bold;font-size:.95rem}
+select,button{cursor:pointer}
+select:hover,button:hover{background:#30363d}
+input{width:90px;text-align:center;text-transform:uppercase;letter-spacing:3px}
+#lang{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:10px;z-index:30;padding:6px 12px;font-size:.85rem}
+#turn{font-weight:bold;font-size:1.1rem}
+#c4{font-size:.9rem;margin-top:4px;color:var(--gold)}
+#log{font-size:.85rem;color:#8b949e;margin-top:6px;min-height:34px}
+#net{font-size:.85rem;color:#8b949e;margin-top:8px}
+#roomcode{font-size:1.6rem;letter-spacing:6px;color:var(--gold);font-weight:bold}
+.hide{display:none!important}
+.board{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;background:var(--panel);padding:8px;border-radius:8px;border:2px solid var(--border);width:100%;max-width:340px}
+.cell{aspect-ratio:1;background:#21262d;border-radius:4px;display:flex;justify-content:center;align-items:center;font-size:clamp(1.4rem,8vw,2rem);cursor:pointer;user-select:none;position:relative;-webkit-tap-highlight-color:transparent}
+.cell.c4{border:2px dashed var(--gold);background:rgba(210,153,34,.12)}
+.cell.tower{background:rgba(88,166,255,.1)}
+.cell.sel{outline:3px solid #58a6ff}
+.cell.last{box-shadow:inset 0 0 0 2px rgba(210,153,34,.7)}
+.cell.ok::after{content:'';position:absolute;width:30%;height:30%;background:rgba(46,160,67,.7);border-radius:50%}
+.cell.ok.cap::after{width:80%;height:80%;background:none;border:3px solid rgba(218,54,51,.8)}
+.pc{width:82%;height:82%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.65em;box-shadow:0 2px 6px rgba(0,0,0,.5)}
+.cell.tower.burned{background:#1a1f26;opacity:.75}
+.cell.tower.burned::before{content:'✖';position:absolute;top:1px;right:4px;font-size:.55rem;color:#8b949e}
+.cell.ctl{box-shadow:inset 0 0 0 3px rgba(210,153,34,.95)}
+#skip{margin-top:8px}
+.g{background:#1f7a33;border:3px solid #56d364}
+.r{background:#a8201f;border:3px solid #ff7b72}
+#rules{position:fixed;left:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:20;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+#rbox{background:#161b22;border:1px solid var(--border);border-radius:8px;padding:10px;width:min(330px,calc(100vw - 20px));max-height:62vh;overflow-y:auto;font-size:.8rem;line-height:1.5;text-align:left;box-shadow:0 8px 24px rgba(0,0,0,.6)}
+#rbox ul{padding-left:18px;margin:4px 0 8px}
+#rbox h4{color:#58a6ff;margin:8px 0 2px;font-size:.85rem}
+.rtabs{display:flex;gap:6px;margin-bottom:8px}
+.rtabs button{padding:5px 12px;font-size:.8rem}
+.rtabs button.on{background:#388bfd;color:#fff;border-color:#388bfd}
+</style>
+</head>
+<body>
+<button id="lang" onclick="toggleLang()">🌐</button>
+<h1>INFILTRATION</h1>
+<div class="sub" data-t="sub"></div>
+<div class="wrap">
+  <div class="panel row">
+    <select id="mode" onchange="modeChanged()">
+      <option value="pvp" data-t="mPvp"></option>
+      <option value="pvai" selected data-t="mAi"></option>
+      <option value="online" data-t="mOn"></option>
+    </select>
+    <select id="side" onchange="resetGame()">
+      <option value="GREEN" data-t="playG"></option>
+      <option value="RED" data-t="playR"></option>
+    </select>
+    <select id="aiLevel">
+      <option value="5" data-t="lv5"></option>
+      <option value="4" data-t="lv4"></option>
+      <option value="3" selected data-t="lv3"></option>
+      <option value="2" data-t="lv2"></option>
+      <option value="1" data-t="lv1"></option>
+    </select>
+    <button onclick="resetGame()" data-t="newGame"></button>
+  </div>
+  <div class="panel hide" id="online">
+    <div id="joinrow" class="row">
+      <button onclick="createRoom()" data-t="create"></button>
+      <span><input id="code" maxlength="4" data-ph="codePh"> <button onclick="joinRoom()" data-t="join"></button></span>
+    </div>
+    <div id="roomrow" class="hide">
+      <div style="font-size:.8rem;color:#8b949e" data-t="roomLbl"></div>
+      <div id="roomcode"></div>
+      <button style="margin-top:8px" onclick="leaveRoom();refreshUI();resetGame()" data-t="leave"></button>
+    </div>
+    <div id="net"></div>
+  </div>
+  <div class="panel">
+    <div id="turn"></div>
+    <div id="c4"></div>
+    <div id="log"></div>
+    <button id="skip" class="hide" onclick="skipBonusClick()" data-t="skipBtn"></button>
+  </div>
+  <div class="board" id="board"></div>
+</div>
+<div id="rules">
+  <div id="rbox" class="hide">
+    <div class="rtabs"><button id="tb" class="on" onclick="rtab('b')" data-t="quick"></button><button id="td" onclick="rtab('d')" data-t="detailed"></button></div>
+    <div id="rb" data-h="rq"></div>
+    <div id="rd" class="hide" data-h="rd"></div>
+  </div>
+  <button onclick="document.getElementById('rbox').classList.toggle('hide')" data-t="rulesBtn"></button>
+</div>
+<script>
+const T={
+en:{
+sub:'Vanguard Tactics (5x7 Grid)',mPvp:'2 players (same device)',mAi:'Player vs AI',mOn:'Online',
+playG:'Play as Green',playR:'Play as Red',newGame:'New game',create:'🏠 Create room',join:'Join',codePh:'Code',
+roomLbl:'Room code (share with a friend)',leave:'Leave room',quick:'Quick',detailed:'Detailed',rulesBtn:'📖 Rules',
+langBtn:'🌐 ไทย',lv5:'★★★★★ Grandmaster',lv4:'★★★★ Expert',lv3:'★★★ Advanced',lv2:'★★ Casual',lv1:'★ Beginner',thinking:'AI is thinking…',skipBtn:'Skip bonus move',bonusTurn:(a,b)=>`${a}: Watchtower bonus! Move one ${b} Vanguard in the gold-outlined flank (or skip)`,bonusOn:(a,b)=>`${a}'s Spy seized a Watchtower: move one ${b} Vanguard now`,ctlMoved:c=>`${c} controlled an enemy Vanguard`,green:'Green',red:'Red',
+turnOf:(c,m)=>`${c}'s turn${m?' (your turn)':''}`,
+c4Held:(c,n)=>`C4 Core: held by ${c} (${n}/5 turns)`,c4Empty:'C4 Core: empty',
+pick:'Select a piece to start',moved:(c,cap)=>`${c} moved${cap?' and captured a piece':''}`,
+skip:c=>`${c} has no legal move, turn skipped`,hostOnly:'Only the host can start a new game',
+wInf:c=>`${c} wins by Infiltration!`,wSpy:c=>`${c} captured the Spy and wins!`,wC4:c=>`${c} wins by C4 Domination!`,
+netHint:'Choose “Create room” or enter a code to join',nUnavail:'Online is unavailable in this view (open it on claude.ai with contributor access)',
+nCreating:'Creating room...',nCreateFail:m=>'Could not create room: '+m,nRetry:'Could not create a room, please try again',
+nCode:'Enter the 4-character room code',nJoining:'Joining room...',nNotFound:c=>'Room '+c+' not found',nJoinFail:m=>'Could not join: '+m,
+nWait:c=>'Waiting for a friend… share code '+c,nConn:c=>'Connected · you are '+c,nSpec:'You are spectating',nHostGone:'The host left the room',nSpecs:n=>' · spectators: '+n,
+rq:`<h4>Goal (any one wins)</h4><ul><li>👑 Spy reaches the enemy's back row</li><li>Capture the enemy 👑 Spy</li><li>Hold the centre C4 square for 5 of your own turns</li></ul><h4>Moves (forward = toward the enemy side)</h4><ul><li>🛡️ Vanguard: 1 step forward or sideways onto an empty square. Captures 1 step diagonally forward.</li><li>👑 Spy: 1 step in any of 8 directions, moving or capturing. Entering an unused blue Watchtower gives a bonus: move one enemy Vanguard on that flank.</li></ul>`,
+rd:`<h4>Setup</h4><ul><li>Board is 5 columns by 7 rows. Each side has 8 Vanguards and 1 Spy on its two back rows.</li><li>Green moves first, then players alternate. One piece moves per turn.</li><li>In AI and online games your pieces are at the bottom, so forward is up.</li></ul><h4>🛡️ Vanguard</h4><ul><li>Forward: 1 square straight ahead, only if it is empty. It cannot capture straight ahead.</li><li>Sideways: 1 square left or right, only if empty. No capturing sideways.</li><li>Capture: 1 square diagonally forward (forward-left or forward-right), only if an enemy is there.</li><li>It can never move backward or diagonally backward.</li></ul><h4>👑 Spy</h4><ul><li>Moves 1 square in any direction: up, down, left, right and the 4 diagonals.</li><li>It captures by moving onto an enemy piece in any of those 8 directions.</li><li>It cannot land on your own pieces.</li><li>Watchtower bonus (a turn and a half): the four blue-tinted squares are Watchtowers. When your Spy moves onto an unused Watchtower, you immediately get a bonus action: move one enemy Vanguard standing on that tower's flank (left towers = the two left columns, right towers = the two right columns). It moves forward in its own direction or sideways onto an empty square, and cannot capture. You may skip the bonus.</li><li>Each Watchtower works only once per game, then it is burned (marked ✖) for both players. Each player can trigger at most 2 Watchtowers per game.</li></ul><h4>Winning</h4><ul><li>Infiltration: your Spy reaches the enemy's back row (the far edge from your start).</li><li>Spy capture: capturing the enemy Spy ends the game at once.</li><li>C4 Domination: the centre square (dashed gold border) counts one point at the end of each of your turns that a piece of yours is on it. Reach 5 to win. It resets if the square empties, and if the enemy captures it their count starts at 1.</li></ul><h4>Other</h4><ul><li>If a side has no legal move, its turn is skipped.</li><li>Green dot = legal move, red ring = capture, gold outline = last move.</li><li>Burned Watchtowers show ✖. During a bonus, gold-outlined Vanguards are the ones you may move.</li></ul>`
+},
+th:{
+sub:'Vanguard Tactics (กระดาน 5x7)',mPvp:'2 คน (เครื่องเดียว)',mAi:'เล่นกับ AI',mOn:'ออนไลน์',
+playG:'เล่นฝ่ายเขียว',playR:'เล่นฝ่ายแดง',newGame:'เริ่มเกมใหม่',create:'🏠 สร้างห้อง',join:'เข้าร่วม',codePh:'รหัส',
+roomLbl:'รหัสห้อง (ส่งให้เพื่อน)',leave:'ออกจากห้อง',quick:'ย่อ',detailed:'ละเอียด',rulesBtn:'📖 กติกา',
+langBtn:'🌐 EN',lv5:'★★★★★ ปรมาจารย์',lv4:'★★★★ ผู้เชี่ยวชาญ',lv3:'★★★ ขั้นสูง',lv2:'★★ ทั่วไป',lv1:'★ มือใหม่',thinking:'AI กำลังคิด…',skipBtn:'ข้ามโบนัส',bonusTurn:(a,b)=>`ฝ่าย${a}: โบนัสหอคอย! ย้ายแวนการ์ดฝ่าย${b}ฝั่งที่มีขอบทอง 1 ตัว (หรือข้าม)`,bonusOn:(a,b)=>`Spy ฝ่าย${a} ยึดหอคอย: ย้ายแวนการ์ดฝ่าย${b} 1 ตัวได้เลย`,ctlMoved:c=>`ฝ่าย${c} คุมแวนการ์ดศัตรูเดิน`,green:'เขียว',red:'แดง',
+turnOf:(c,m)=>`ตาของฝ่าย${c}${m?' (ตาคุณ)':''}`,
+c4Held:(c,n)=>`C4 Core: ฝ่าย${c} ยึดครอง (${n}/5 ตา)`,c4Empty:'C4 Core: ว่างเปล่า',
+pick:'เลือกหมากเพื่อเริ่มเดิน',moved:(c,cap)=>`ฝ่าย${c} เดิน${cap?' และกินหมาก':''}`,
+skip:c=>`ฝ่าย${c} ไม่มีทางเดิน ข้ามตา`,hostOnly:'เฉพาะโฮสต์เท่านั้นที่เริ่มเกมใหม่ได้',
+wInf:c=>`ฝ่าย${c} ชนะด้วย Infiltration!`,wSpy:c=>`ฝ่าย${c} จับ Spy ได้ ชนะ!`,wC4:c=>`ฝ่าย${c} ชนะด้วย C4 Domination!`,
+netHint:'เลือก “สร้างห้อง” หรือใส่รหัสเพื่อเข้าร่วม',nUnavail:'ออนไลน์ใช้ไม่ได้ในมุมมองนี้ (ต้องเปิดผ่าน claude.ai และมีสิทธิ์ผู้ร่วมแก้ไข)',
+nCreating:'กำลังสร้างห้อง...',nCreateFail:m=>'สร้างห้องไม่สำเร็จ: '+m,nRetry:'สร้างห้องไม่สำเร็จ ลองใหม่อีกครั้ง',
+nCode:'ใส่รหัสห้อง 4 ตัวอักษร',nJoining:'กำลังเข้าห้อง...',nNotFound:c=>'ไม่พบห้อง '+c,nJoinFail:m=>'เข้าห้องไม่สำเร็จ: '+m,
+nWait:c=>'รอเพื่อนเข้าห้อง… ส่งรหัส '+c+' ให้เพื่อน',nConn:c=>'เชื่อมต่อแล้ว · คุณคือฝ่าย'+c,nSpec:'คุณเป็นผู้ชม',nHostGone:'โฮสต์ออกจากห้องแล้ว',nSpecs:n=>' · ผู้ชม '+n,
+rq:`<h4>เป้าหมาย (ชนะได้ด้วยข้อใดข้อหนึ่ง)</h4><ul><li>👑 Spy เดินถึงแถวหลังสุดของศัตรู</li><li>จับ 👑 Spy ของศัตรู</li><li>ยึดช่อง C4 ตรงกลางครบ 5 ตาของตัวเอง</li></ul><h4>การเดิน (เดินหน้า = ไปทางฝั่งศัตรู)</h4><ul><li>🛡️ Vanguard: เดินหน้าหรือเดินข้าง 1 ช่องไปยังช่องว่าง กินได้ 1 ช่องเฉียงหน้า</li><li>👑 Spy: เดิน 1 ช่องได้ทั้ง 8 ทิศ ทั้งเดินและกิน ถ้าเข้าหอคอย (สีฟ้า) ที่ยังไม่ถูกใช้ จะได้โบนัสย้ายแวนการ์ดศัตรูฝั่งนั้น 1 ตัว</li></ul>`,
+rd:`<h4>การตั้งต้น</h4><ul><li>กระดาน 5 คอลัมน์ 7 แถว แต่ละฝ่ายมี Vanguard 8 ตัวและ Spy 1 ตัว วางในสองแถวหลัง</li><li>ฝ่ายเขียวเดินก่อน จากนั้นสลับกัน ตาละ 1 หมาก</li><li>ในโหมด AI และออนไลน์ หมากของคุณอยู่ด้านล่าง เดินหน้า = เดินขึ้น</li></ul><h4>🛡️ Vanguard</h4><ul><li>เดินหน้า: 1 ช่องตรงไปข้างหน้า เฉพาะช่องว่าง กินตรงหน้าไม่ได้</li><li>เดินข้าง: 1 ช่องซ้ายหรือขวา เฉพาะช่องว่าง กินด้านข้างไม่ได้</li><li>กิน: 1 ช่องเฉียงหน้า (หน้าซ้ายหรือหน้าขวา) เฉพาะที่มีศัตรูอยู่</li><li>ถอยหลังหรือเฉียงหลังไม่ได้</li></ul><h4>👑 Spy</h4><ul><li>เดิน 1 ช่องได้ทุกทิศ: บน ล่าง ซ้าย ขวา และเฉียงทั้ง 4</li><li>กินโดยเดินทับหมากศัตรูใน 8 ทิศนั้น</li><li>เดินทับหมากฝ่ายเดียวกันไม่ได้</li><li>โบนัสหอคอย (หนึ่งตาครึ่ง): ช่องสีฟ้าอ่อน 4 ช่องคือหอคอย เมื่อ Spy ของคุณเดินเข้าหอคอยที่ยังไม่ถูกใช้ คุณได้ทำโบนัสต่อทันที: ย้ายแวนการ์ดศัตรู 1 ตัวที่อยู่ฝั่งเดียวกับหอคอย (หอคอยซ้าย = 2 คอลัมน์ซ้าย, หอคอยขวา = 2 คอลัมน์ขวา) แวนการ์ดเดินหน้าตามทิศของมันเองหรือเดินข้างไปช่องว่าง และกินไม่ได้ คุณเลือกข้ามโบนัสได้</li><li>หอคอยแต่ละอันใช้ได้ครั้งเดียวต่อเกม แล้วจะถูกทำลาย (มีเครื่องหมาย ✖) สำหรับทั้งสองฝ่าย ผู้เล่นแต่ละคนกระตุ้นหอคอยได้สูงสุด 2 อันต่อเกม</li></ul><h4>เงื่อนไขชนะ</h4><ul><li>Infiltration: Spy ของคุณถึงแถวหลังสุดของศัตรู (ขอบฝั่งตรงข้ามกับที่เริ่ม)</li><li>จับ Spy: กิน Spy ศัตรูได้ เกมจบทันที</li><li>C4 Domination: ช่องกลาง (ขอบประสีทอง) นับ 1 แต้มเมื่อจบแต่ละตาของคุณที่มีหมากคุณอยู่บนช่อง ครบ 5 ชนะ ถ้าช่องว่างจะรีเซ็ต ถ้าศัตรูกินช่องไป แต้มของเขาเริ่มที่ 1</li></ul><h4>อื่นๆ</h4><ul><li>ถ้าฝ่ายใดไม่มีทางเดิน จะข้ามตา</li><li>จุดเขียว = เดินได้, วงแดง = กินได้, ขอบทอง = การเดินล่าสุด</li><li>หอคอยที่ถูกใช้แล้วมี ✖ ระหว่างโบนัส แวนการ์ดที่มีขอบทองคือตัวที่คุณย้ายได้</li></ul>`
+}};
+let lang='en';
+try{const s=localStorage.getItem('inf-lang2');if(s==='en'||s==='th')lang=s}catch(e){}
+const t=(k,...a)=>{const v=T[lang][k];return typeof v==='function'?v(...a):v};
+const cn=c=>t(c==='GREEN'?'green':'red');
+
+const ROWS=7,COLS=5,C4_WIN=5;
+let board,turn,sel,c4Holder,c4Turns,over,last,aiTimer,result=null,logS=['pick'],netS=['netHint'];
+const moves=[];
+let net={room:null,code:null,host:false,role:null,color:null,ready:false,unsubs:[]};
+const $=id=>document.getElementById(id);
+const isAI=()=>$('mode').value==='pvai';
+const isOnline=()=>$('mode').value==='online';
+const humanSide=()=>$('side').value;
+const aiSide=()=>humanSide()==='GREEN'?'RED':'GREEN';
+const opp=c=>c==='GREEN'?'RED':'GREEN';
+const isFlipped=()=>(isAI()&&humanSide()==='GREEN')||(isOnline()&&net.color==='GREEN');
+const side=p=>p[0]==='G'?'GREEN':'RED';
+const towerAt=(r,c)=>(r===2||r===4)&&(c===1||c===3);
+let bonus=null,towerUsed={},towerCount={GREEN:0,RED:0};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function L(...s){logS=s;$('log').textContent=t(...s)}
+function N(...s){netS=s;$('net').textContent=t(...s)}
+
+function applyLang(){
+  document.documentElement.lang=lang;
+  document.querySelectorAll('[data-t]').forEach(e=>e.textContent=t(e.dataset.t));
+  document.querySelectorAll('[data-ph]').forEach(e=>e.placeholder=t(e.dataset.ph));
+  document.querySelectorAll('[data-h]').forEach(e=>e.innerHTML=t(e.dataset.h));
+  $('lang').textContent=t('langBtn');
+  $('log').textContent=t(...logS);$('net').textContent=t(...netS);
+  updateStatus();
+}
+function toggleLang(){
+  lang=lang==='th'?'en':'th';
+  try{localStorage.setItem('inf-lang2',lang)}catch(e){}
+  applyLang();
+}
+
+function initBoard(){
+  board=Array.from({length:ROWS},()=>Array(COLS).fill(null));
+  board[0]=['G_V','G_V','G_S','G_V','G_V'];
+  board[1]=['G_V','G_V',null,'G_V','G_V'];
+  board[5]=['R_V','R_V',null,'R_V','R_V'];
+  board[6]=['R_V','R_V','R_S','R_V','R_V'];
+  turn='GREEN';sel=null;c4Holder=null;c4Turns=0;over=false;last=null;result=null;moves.length=0;bonus=null;towerUsed={};towerCount={GREEN:0,RED:0};
+  L('pick');
+  render();updateStatus();
+  if(isAI()&&turn===aiSide())aiTimer=setTimeout(aiMove,600);
+}
+
+function render(){
+  const el=$('board');el.innerHTML='';
+  const fl=isFlipped();
+  for(let i=0;i<ROWS;i++)for(let j=0;j<COLS;j++){
+    const r=fl?ROWS-1-i:i,c=fl?COLS-1-j:j;
+    const d=document.createElement('div');d.className='cell';
+    if(r===3&&c===2)d.classList.add('c4');
+    if((r===2||r===4)&&(c===1||c===3)){d.classList.add('tower');if(towerUsed[r+','+c])d.classList.add('burned')}
+    if(last&&((last.fr===r&&last.fc===c)||(last.tr===r&&last.tc===c)))d.classList.add('last');
+    const p=board[r][c];
+    if(p){const s=document.createElement('span');s.className='pc '+(p[0]==='G'?'g':'r');s.textContent=p[2]==='S'?'👑':'🛡️';d.appendChild(s)}
+    if(bonus&&p&&p[2]==='V'&&side(p)!==turn&&bonus.cols.includes(c))d.classList.add('ctl');
+    if(sel&&sel.r===r&&sel.c===c)d.classList.add('sel');
+    if(sel&&valid(sel.r,sel.c,r,c)){d.classList.add('ok');if(p)d.classList.add('cap')}
+    d.onclick=()=>click(r,c);
+    el.appendChild(d);
+  }
+}
+
+function click(r,c){
+  if(over)return;
+  const online=isOnline(),ai=isAI();
+  if(online&&(!net.room||!net.ready||turn!==net.color))return;
+  if(ai&&turn===aiSide())return;
+  if(sel&&valid(sel.r,sel.c,r,c)){
+    const m=sel;sel=null;
+    if(online){net.room.emit('move',{n:moves.length,m:''+m.r+m.c+r+c});render();return}
+    makeMove(m.r,m.c,r,c);render();
+    if(!over&&ai&&turn===aiSide())aiTimer=setTimeout(aiMove,500);
+    return;
+  }
+  const p=board[r][c];
+  if(bonus)sel=(p&&p[2]==='V'&&side(p)!==turn&&bonus.cols.includes(c))?{r,c}:null;
+  else sel=(p&&side(p)===turn)?{r,c}:null;
+  render();
+}
+
+function valid(fr,fc,tr,tc){
+  const p=board[fr][fc];if(!p)return false;
+  if(bonus)return validBonus(fr,fc,tr,tc);
+  const tg=board[tr][tc];
+  if(tg&&side(tg)===side(p))return false;
+  const dr=tr-fr,dc=tc-fc;
+  if(p[2]==='S')return(dr||dc)&&Math.abs(dr)<=1&&Math.abs(dc)<=1;
+  const f=p[0]==='G'?1:-1;
+  if(dr===f&&dc===0)return !tg;
+  if(dr===0&&Math.abs(dc)===1)return !tg;
+  if(dr===f&&Math.abs(dc)===1)return !!tg;
+  return false;
+}
+
+function makeMove(fr,fc,tr,tc){
+  moves.push(''+fr+fc+tr+tc);
+  if(bonus)return bonusMove(fr,fc,tr,tc);
+  const p=board[fr][fc],target=board[tr][tc];
+  board[tr][tc]=p;board[fr][fc]=null;last={fr,fc,tr,tc};
+  const me=turn;
+  if(target&&target[2]==='S'){render();return endGame('wSpy',me)}
+  if(p[2]==='S'&&((me==='GREEN'&&tr===ROWS-1)||(me==='RED'&&tr===0))){render();return endGame('wInf',me)}
+  const key=tr+','+tc;
+  if(p[2]==='S'&&towerAt(tr,tc)&&!towerUsed[key]&&towerCount[me]<2){
+    const cols=tc<2?[0,1]:[3,4];
+    if(bonusMoves(me,cols).length){
+      towerUsed[key]=true;towerCount[me]++;bonus={by:me,cols,cap:!!target};
+      sel=null;L('bonusOn',cn(me),cn(opp(me)));updateStatus();return;
+    }
+  }
+  finishTurn(me,!!target,false);
+}
+function finishTurn(me,cap,ctl){
+  const core=board[3][2];
+  if(!core){c4Holder=null;c4Turns=0}
+  else if(side(core)===me){
+    if(c4Holder===me)c4Turns++;else{c4Holder=me;c4Turns=1}
+    if(c4Turns>=C4_WIN){render();return endGame('wC4',me)}
+  }else if(c4Holder!==side(core)){c4Holder=side(core);c4Turns=0}
+  L(ctl?'ctlMoved':'moved',cn(me),cap);
+  turn=opp(me);
+  if(!hasMoves(turn)){L('skip',cn(turn));turn=me}
+  updateStatus();
+}
+// Watchtower bonus: enemy Vanguards on the tower's flank (non-capturing moves only)
+function bonusMoves(me,cols){
+  const e=opp(me),f=e==='GREEN'?1:-1,out=[];
+  for(const c of cols)for(let r=0;r<ROWS;r++){
+    const q=board[r][c];if(!q||q[2]!=='V'||side(q)!==e)continue;
+    const nr=r+f;
+    if(nr>=0&&nr<ROWS&&!board[nr][c])out.push({fr:r,fc:c,tr:nr,tc:c});
+    for(const dc of[-1,1]){const nc=c+dc;if(nc>=0&&nc<COLS&&!board[r][nc])out.push({fr:r,fc:c,tr:r,tc:nc})}
+  }
+  return out;
+}
+function validBonus(fr,fc,tr,tc){
+  return bonusMoves(bonus.by,bonus.cols).some(m=>m.fr===fr&&m.fc===fc&&m.tr===tr&&m.tc===tc);
+}
+function bonusMove(fr,fc,tr,tc){
+  const me=bonus.by,q=board[fr][fc],cap=bonus.cap;
+  board[tr][tc]=q;board[fr][fc]=null;last={fr,fc,tr,tc};
+  bonus=null;sel=null;
+  finishTurn(me,cap,true);
+}
+function skipBonus(){
+  moves.push('9999');
+  const me=bonus.by,cap=bonus.cap;bonus=null;sel=null;
+  finishTurn(me,cap,false);render();
+}
+function skipBonusClick(){
+  if(!bonus||over)return;
+  if(isOnline()){
+    if(!net.room||!net.ready||net.color!==bonus.by)return;
+    net.room.emit('move',{n:moves.length,m:'9999'});return;
+  }
+  if(isAI()&&bonus.by!==humanSide())return;
+  skipBonus();
+  if(!over&&isAI()&&turn===aiSide())aiTimer=setTimeout(aiMove,500);
+}
+
+function allMoves(c){
+  const m=[];
+  for(let r=0;r<ROWS;r++)for(let q=0;q<COLS;q++){
+    const p=board[r][q];if(!p||side(p)!==c)continue;
+    for(let tr=0;tr<ROWS;tr++)for(let tc=0;tc<COLS;tc++)if(valid(r,q,tr,tc))m.push({fr:r,fc:q,tr,tc});
+  }
+  return m;
+}
+const hasMoves=c=>allMoves(c).length>0;
+
+// ---------- AI: alpha-beta search ----------
+const AI_LV={
+  5:{depth:9,time:1400,noise:0,rnd:0},
+  4:{depth:5,time:800,noise:0,rnd:0},
+  3:{depth:3,time:500,noise:0,rnd:0},
+  2:{depth:2,time:300,noise:45,rnd:.2},
+  1:{depth:1,time:100,noise:130,rnd:.5}
+};
+const WIN=100000,INF=1e9;
+let nodes=0,deadline=0,aborted=false;
+const own=p=>p<=2?0:1;
+function toState(t){
+  const b=new Int8Array(35);
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    const p=board[r][c];
+    b[r*5+c]=p?({G_V:1,G_S:2,R_V:3,R_S:4})[p]:0;
+  }
+  return{b,h:c4Holder==='GREEN'?0:c4Holder==='RED'?1:-1,n:c4Turns,t:t==='GREEN'?0:1};
+}
+function genMoves(b,t){
+  const out=[];
+  for(let i=0;i<35;i++){
+    const p=b[i];if(!p||own(p)!==t)continue;
+    const r=(i/5)|0,c=i%5;
+    if(p===2||p===4){
+      for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
+        if(!dr&&!dc)continue;
+        const nr=r+dr,nc=c+dc;if(nr<0||nr>6||nc<0||nc>4)continue;
+        const tg=b[nr*5+nc];if(tg&&own(tg)===t)continue;
+        out.push([i,nr*5+nc,tg]);
+      }
+    }else{
+      const f=t===0?1:-1,nr=r+f;
+      if(nr>=0&&nr<=6&&!b[nr*5+c])out.push([i,nr*5+c,0]);
+      for(const dc of[-1,1]){
+        const nc=c+dc;if(nc<0||nc>4)continue;
+        if(!b[r*5+nc])out.push([i,r*5+nc,0]);
+        if(nr>=0&&nr<=6){const tg=b[nr*5+nc];if(tg&&own(tg)!==t)out.push([i,nr*5+nc,tg])}
+      }
+    }
+  }
+  // ordering: captures (spy first), then forward progress, centre
+  for(const m of out){
+    const pr=t===0?((m[1]/5)|0)-((m[0]/5)|0):((m[0]/5)|0)-((m[1]/5)|0);
+    m.k=(m[2]===2||m[2]===4?10000:m[2]?1000:0)+pr*10+(m[1]===17?15:0);
+  }
+  out.sort((x,y)=>y.k-x.k);
+  return out;
+}
+function applyMv(st,m){
+  const b=st.b.slice(),p=b[m[0]],tg=b[m[1]],me=st.t;
+  b[m[1]]=p;b[m[0]]=0;
+  let win=false,h=st.h,n=st.n;
+  if(tg===2||tg===4)win=true;
+  else if((p===2||p===4)&&((me===0&&m[1]>=30)||(me===1&&m[1]<5)))win=true;
+  else{
+    const core=b[17];
+    if(!core){h=-1;n=0}
+    else if(own(core)===me){if(h===me)n++;else{h=me;n=1}if(n>=C4_WIN)win=true}
+    else if(h!==own(core)){h=own(core);n=0}
+  }
+  return{b,h,n,t:1-me,win};
+}
+function attacked(b,idx,by){
+  const r=(idx/5)|0,c=idx%5,f=by===0?1:-1;
+  for(const dc of[-1,1]){
+    const nr=r-f,nc=c+dc;
+    if(nr>=0&&nr<=6&&nc>=0&&nc<=4){const q=b[nr*5+nc];if(q&&own(q)===by&&(q===1||q===3))return true}
+  }
+  for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
+    if(!dr&&!dc)continue;
+    const nr=r+dr,nc=c+dc;
+    if(nr>=0&&nr<=6&&nc>=0&&nc<=4){const q=b[nr*5+nc];if(q&&own(q)===by&&(q===2||q===4))return true}
+  }
+  return false;
+}
+function evalSt(st){
+  const s=st.t,b=st.b;let sc=0;const spy=[-1,-1];
+  for(let i=0;i<35;i++){
+    const p=b[i];if(!p)continue;
+    const o=own(p),r=(i/5)|0,c=i%5,sg=o===s?1:-1,prog=o===0?r:6-r;
+    let v;
+    if(p===2||p===4){spy[o]=i;v=prog*14+(prog>=5?60:0);if(towerAt(r,c)&&!towerUsed[r+','+c]&&towerCount[o===0?'GREEN':'RED']<2)v+=20}
+    else v=100+prog*prog*3+(c===2?4:0)-Math.abs(c-2);
+    if(i===17)v+=30;
+    sc+=sg*v;
+  }
+  if(st.h===s)sc+=st.n*st.n*25;else if(st.h===1-s)sc-=st.n*st.n*25;
+  for(let o=0;o<2;o++){
+    if(spy[o]<0)continue;
+    if(attacked(b,spy[o],1-o)){
+      if(o===s)sc-=300;else sc+=50000; // side to move can capture enemy spy
+    }
+  }
+  return sc;
+}
+function search(st,depth,alpha,beta,ply){
+  if((++nodes&1023)===0&&performance.now()>deadline)aborted=true;
+  if(aborted)return 0;
+  if(depth<=0)return evalSt(st);
+  const ms=genMoves(st.b,st.t);
+  if(!ms.length)return -search({b:st.b,h:st.h,n:st.n,t:1-st.t},depth-1,-beta,-alpha,ply+1);
+  let best=-INF;
+  for(const m of ms){
+    const ns=applyMv(st,m);
+    const sc=ns.win?WIN-ply:-search(ns,depth-1,-beta,-alpha,ply+1);
+    if(aborted)return 0;
+    if(sc>best)best=sc;
+    if(best>alpha)alpha=best;
+    if(alpha>=beta)break;
+  }
+  return best;
+}
+function pickAiMove(me,cfg){
+  const st=toState(me),root=genMoves(st.b,st.t);
+  if(!root.length)return null;
+  const toMv=m=>({fr:(m[0]/5)|0,fc:m[0]%5,tr:(m[1]/5)|0,tc:m[1]%5});
+  // instant win always taken (except the easiest level, which may miss it)
+  for(const m of root){if(applyMv(st,m).win&&(cfg.rnd<.5||Math.random()<.6))return toMv(m)}
+  if(cfg.rnd&&Math.random()<cfg.rnd)return toMv(root[Math.random()*root.length|0]);
+  deadline=performance.now()+cfg.time;aborted=false;nodes=0;
+  let best=root[0];
+  for(let d=1;d<=cfg.depth;d++){
+    let alpha=-INF,cur=null,curSc=-INF;
+    for(const m of root){
+      const ns=applyMv(st,m);
+      const sc=ns.win?WIN:-search(ns,d-1,-INF,cfg.noise?INF:-alpha,1);
+      if(aborted)break;
+      m.sc=sc+(cfg.noise?(Math.random()-.5)*cfg.noise:0);
+      if(m.sc>curSc){curSc=m.sc;cur=m}
+      if(!cfg.noise&&sc>alpha)alpha=sc;
+    }
+    if(aborted)break;
+    best=cur;
+    root.sort((x,y)=>y.sc-x.sc);
+    if(curSc>=WIN-50)break;
+  }
+  return toMv(best);
+}
+function aiMove(){
+  if(over||turn!==aiSide())return;
+  L('thinking');
+  aiTimer=setTimeout(doAiMove,40);
+}
+function aiBonus(me){
+  const cfg=AI_LV[$('aiLevel').value]||AI_LV[3];
+  const cands=bonusMoves(me,bonus.cols),st0=toState(me),opT=me==='GREEN'?1:0;
+  deadline=performance.now()+Math.min(cfg.time,400);aborted=false;nodes=0;
+  const dpt=Math.max(1,Math.min(cfg.depth,3));
+  const score=m=>{
+    const b=st0.b.slice();
+    if(m){b[m.tr*5+m.tc]=b[m.fr*5+m.fc];b[m.fr*5+m.fc]=0}
+    return -search({b,h:st0.h,n:st0.n,t:opT},dpt,-INF,INF,0);
+  };
+  let best=null,bs=score(null);
+  if(cfg.rnd&&Math.random()<cfg.rnd){bs=INF}
+  else for(const m of cands){const sc=score(m);if(sc>bs){bs=sc;best=m}}
+  if(cfg.rnd&&bs===INF)best=null;
+  if(best)makeMove(best.fr,best.fc,best.tr,best.tc);else skipBonus();
+  render();
+  if(!over&&turn===me)aiTimer=setTimeout(aiMove,400);
+}
+function doAiMove(){
+  const me=aiSide();
+  if(over||turn!==me)return;
+  if(bonus&&bonus.by===me)return aiBonus(me);
+  const m=pickAiMove(me,AI_LV[$('aiLevel').value]||AI_LV[3]);
+  if(!m){turn=humanSide();updateStatus();return}
+  makeMove(m.fr,m.fc,m.tr,m.tc);render();
+  if(!over&&turn===me)aiTimer=setTimeout(aiMove,400);
+}
+
+function updateStatus(){
+  const el=$('turn');
+  if(result){$('skip').classList.add('hide');el.textContent='🎉 '+t(result[0],cn(result[1]));el.style.color='var(--gold)';$('c4').textContent='';return}
+  const mine=(isOnline()&&net.color&&turn===net.color)||(isAI()&&turn===humanSide());
+  el.textContent=bonus?t('bonusTurn',cn(bonus.by),cn(opp(bonus.by))):t('turnOf',cn(turn),mine);
+  el.style.color=turn==='GREEN'?'#3fb950':'#f85149';
+  $('c4').textContent=c4Holder?t('c4Held',cn(c4Holder),c4Turns):t('c4Empty');
+  const mineCtl=bonus&&(isOnline()?net.color===bonus.by:isAI()?bonus.by===humanSide():true);
+  $('skip').classList.toggle('hide',!mineCtl);
+}
+function endGame(k,c){over=true;result=[k,c];updateStatus()}
+
+// ---------- Online ----------
+function refreshUI(){
+  const on=isOnline();
+  $('online').classList.toggle('hide',!on);
+  $('joinrow').classList.toggle('hide',!!net.room);
+  $('roomrow').classList.toggle('hide',!net.room);
+  $('side').classList.toggle('hide',!(isAI()||(on&&!net.room)));
+  $('aiLevel').classList.toggle('hide',!isAI());
+}
+function leaveRoom(){
+  net.unsubs.forEach(u=>{try{u()}catch(e){}});
+  if(net.room){try{net.room.leave()}catch(e){}}
+  net={room:null,code:null,host:false,role:null,color:null,ready:false,unsubs:[]};
+  N('netHint');
+}
+async function getRoomApi(){
+  try{const rt=window.claude&&await window.claude.use('room');if(rt)return rt}catch(e){}
+  N('nUnavail');return null;
+}
+const hostPeer=room=>room.peers().find(p=>!p.isMe&&p.presence&&p.presence.role==='host');
+async function createRoom(){
+  const rt=await getRoomApi();if(!rt)return;
+  N('nCreating');
+  try{
+    for(let i=0;i<5;i++){
+      const code=Array.from({length:4},()=>'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[Math.random()*31|0]).join('');
+      const room=await rt.join('g-'+code.toLowerCase());
+      await sleep(600);
+      if(hostPeer(room)){await room.leave();continue}
+      net.room=room;net.code=code;net.host=true;net.role='host';net.color=humanSide();
+      await room.presence({role:'host',color:net.color});
+      bindRoom();return enterRoom();
+    }
+    N('nRetry');
+  }catch(e){N('nCreateFail',e&&e.message||String(e))}
+}
+async function joinRoom(){
+  const code=$('code').value.trim().toUpperCase();
+  if(code.length!==4){N('nCode');return}
+  const rt=await getRoomApi();if(!rt)return;
+  N('nJoining');
+  try{
+    const room=await rt.join('g-'+code.toLowerCase());
+    let h=null;
+    for(let i=0;i<12&&!(h=hostPeer(room));i++)await sleep(250);
+    if(!h){await room.leave();N('nNotFound',code);return}
+    const taken=room.peers().some(p=>!p.isMe&&p.presence&&p.presence.role==='guest');
+    net.room=room;net.code=code;net.host=false;
+    net.role=taken?'spec':'guest';
+    net.color=taken?null:opp(h.presence.color);
+    await room.presence({role:net.role,color:net.color});
+    bindRoom();enterRoom();
+    room.emit('syncreq',{});
+  }catch(e){N('nJoinFail',e&&e.message||String(e))}
+}
+function enterRoom(){$('roomcode').textContent=net.code;refreshUI();initBoard()}
+function bindRoom(){
+  const r=net.room;
+  net.unsubs=[
+    r.on('move',onMove),
+    r.on('syncreq',()=>{if(net.host)r.emit('sync',{log:moves.join(''),hc:net.color})}),
+    r.on('sync',onSync),
+    r.on('reset',onReset),
+    r.onPeers(onPeers)
+  ];
+}
+function onPeers(){
+  if(!net.room)return;
+  const ps=net.room.peers();
+  const roles=new Set(ps.map(p=>p.presence&&p.presence.role));
+  roles.add(net.role);
+  net.ready=roles.has('host')&&roles.has('guest');
+  const spec=ps.filter(p=>p.presence&&p.presence.role==='spec').length;
+  if(!roles.has('host'))N('nHostGone');
+  else if(!roles.has('guest'))N('nWait',net.code);
+  else N(net.color?'nConn':'nSpec',net.color?cn(net.color):undefined);
+  if(spec&&net.role!=='spec')$('net').textContent+=t('nSpecs',spec);
+  render();updateStatus();
+}
+function parseMv(s){return[...s].map(Number)}
+function onMove(msg){
+  const d=msg.data||{};
+  if(typeof d.m!=='string'||!/^\d{4}$/.test(d.m)||!Number.isInteger(d.n))return;
+  if(d.n>moves.length){net.room.emit('syncreq',{});return}
+  if(d.n!==moves.length||over)return;
+  if(d.m==='9999'){if(bonus)skipBonus();return}
+  const[fr,fc,tr,tc]=parseMv(d.m);
+  if(fr>=ROWS||tr>=ROWS||fc>=COLS||tc>=COLS)return;
+  const p=board[fr][fc];
+  if(!p||(!bonus&&side(p)!==turn)||!valid(fr,fc,tr,tc))return;
+  sel=null;makeMove(fr,fc,tr,tc);render();
+}
+function onSync(msg){
+  const d=msg.data||{};
+  if(msg.isMe||typeof d.log!=='string'||!/^(\d{4})*$/.test(d.log))return;
+  if(d.log.length/4<=moves.length)return;
+  if(net.role==='guest'&&d.hc)net.color=opp(d.hc);
+  initBoard();
+  for(let i=0;i<d.log.length&&!over;i+=4){
+    const seg=d.log.slice(i,i+4);
+    if(seg==='9999'){if(bonus){skipBonus();continue}break}
+    const[fr,fc,tr,tc]=parseMv(seg);
+    if(fr>=ROWS||tr>=ROWS||fc>=COLS||tc>=COLS||!board[fr][fc]||!valid(fr,fc,tr,tc))break;
+    makeMove(fr,fc,tr,tc);
+  }
+  render();
+}
+function onReset(msg){
+  if(msg.isMe)return;
+  const d=msg.data||{};
+  if(net.role==='guest'&&d.hc)net.color=opp(d.hc);
+  initBoard();
+}
+
+function rtab(k){
+  $('rb').classList.toggle('hide',k!=='b');$('rd').classList.toggle('hide',k!=='d');
+  $('tb').classList.toggle('on',k==='b');$('td').classList.toggle('on',k==='d');
+}
+function modeChanged(){leaveRoom();refreshUI();resetGame()}
+function resetGame(){
+  clearTimeout(aiTimer);
+  if(isOnline()&&net.room){
+    if(!net.host){L('hostOnly');return}
+    initBoard();net.room.emit('reset',{hc:net.color});return;
+  }
+  initBoard();
+}
+refreshUI();initBoard();applyLang();
+</script>
+</body>
+</html>
